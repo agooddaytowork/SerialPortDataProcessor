@@ -1,4 +1,4 @@
-QT += core sql network serialport
+QT += core sql serialport
 QT -= gui
 
 CONFIG += c++11

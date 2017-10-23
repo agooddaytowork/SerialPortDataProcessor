@@ -50,15 +50,11 @@ public:
 
     bool isAutoSignallerEnabled = false;
 
-    void initialize();
-    void dispose();
-    void setError(const Error & anErrorType, const QString & anErrorInfo);
-    void clearError();
-
     void uninitiatedSerialPortDataProcessorOnEntry();
     void idleSerialPortDataProcessorOnEntry();    
     void runningSerialPortDataProcessorOnEntry();
     void errorSerialPortDataProcessorOnEntry();
+    void clearError();
 signals:
 
 public slots:
@@ -85,6 +81,9 @@ private:
     QByteArray QBAReadI;
     GlobalSignal autoGlobalSignalToUHV;
 
+    void initiate();
+    void dispose();
+    void setError(const Error & anErrorType, const QString & anErrorInfo);
     bool openLocalDatabaseConnection();
     void closeLocalDatabaseConnection();
     void clearCache();

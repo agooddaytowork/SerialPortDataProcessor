@@ -12,10 +12,10 @@ SerialPortDataProcessor::SerialPortDataProcessor(bool isUHV2, QObject *parent) :
     idleSerialPortDataProcessor *state1 = new idleSerialPortDataProcessor(currentBasis,main);
     runningSerialPortDataProcessor *state2 = new runningSerialPortDataProcessor(currentBasis,main);
 
-    state0->addTransition(currentBasis, &SerialPortDataProcessorBasis::goToState1, state1);
-    state1->addTransition(currentBasis, &SerialPortDataProcessorBasis::goToState2, state2);
-    state2->addTransition(currentBasis, &SerialPortDataProcessorBasis::goToState1, state1);
-    state2->addTransition(currentBasis, &SerialPortDataProcessorBasis::goToState2, state2);
+    state0->addTransition(currentBasis, &SerialPortDataProcessorBasis::goIdle, state1);
+    state1->addTransition(currentBasis, &SerialPortDataProcessorBasis::GlobalSignalExecutionRequested, state2);
+    state2->addTransition(currentBasis, &SerialPortDataProcessorBasis::goIdle, state1);
+    state2->addTransition(currentBasis, &SerialPortDataProcessorBasis::GlobalSignalExecutionRequested, state2);
 
     main->setInitialState(state0);
 

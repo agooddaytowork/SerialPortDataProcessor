@@ -61,7 +61,7 @@ public:
     Error ErrorType = NoError;
     QString ErrorInfo;
 
-    void initialize(const QString &aPortName);
+    void initiate(const QString &aPortName);
     void dispose();
     void setError(const Error & anErrorType, const QString & anErrorInfo);
     void clearError();

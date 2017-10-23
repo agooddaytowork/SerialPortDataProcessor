@@ -80,7 +80,7 @@ public:
     Error ErrorType = NoError;
     QString ErrorInfo;
 
-    void initialize();
+    void initiate();
     void dispose();
     void setOnOffLine(bool on1off0);//On = true, Off = false
     void setError(const Error & anErrorType, const QString & anErrorInfo);

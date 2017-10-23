@@ -4,6 +4,7 @@ SerialPortDataProcessorBasis::SerialPortDataProcessorBasis(bool isAnUHV2, QObjec
     AbstractStateMachineBasis(parent),
     isUHV2(isAnUHV2)
 {
+    registerGlobalSignal;
     anIf(SerialPortDataProcessorBasisDbgEn, anAck("SerialPortDataProcessorBasis Constructed"));
 }
 
@@ -13,17 +14,18 @@ SerialPortDataProcessorBasis::~SerialPortDataProcessorBasis()
     dispose();
 }
 
-void SerialPortDataProcessorBasis::initialize()
+void SerialPortDataProcessorBasis::initiate()
 {
     dispose();
     autoGlobalSignalToUHV.Type = QVariant::fromValue(SerialPortWorkerBasis::requestBytesTransmission);
-    autoGlobalSignalToUHV.DstStrs.append(isUHV2?UHV2WorkerObjName:UHV4WorkerObjName);
+    autoGlobalSignalToUHV.DstStrs.append(isUHV2?UHV2SerialPortWorkerObjName:UHV4SerialPortWorkerObjName);
+    autoGlobalSignalToUHV.DstStrs.append(parent()->objectName());
     if (openLocalDatabaseConnection())
     {
         if (goToNextGlobalID())
         {
             isInitiated = true;
-            emit goToState1();
+            emit goIdle();
         }
     }
     anIf(SerialPortDataProcessorBasisDbgEn && isInitiated, anWarn("SerialPortDataProcessorBasis Initialized"));
@@ -64,7 +66,7 @@ void SerialPortDataProcessorBasis::uninitiatedSerialPortDataProcessorOnEntry()
 {
     if (!isInitiated)
     {
-        initialize();
+        initiate();
     }
 }
 
@@ -76,10 +78,10 @@ void SerialPortDataProcessorBasis::idleSerialPortDataProcessorOnEntry()
         iamReady.Type = QVariant::fromValue(readyToWork);
         iamReady.Data = QVariant::fromValue(parent()->objectName());
         iamReady.TimeStamp = NOW2String;
-        iamReady.DstStrs.append(SmallCoordinatorObjName);
+        iamReady.DstStrs.append(GlobalSignalCoordinatorObjName);
         iamReady.SignalPriority = 200;
-        addAGlobalSignal(iamReady);
-        emit goToState2();
+        pushAGlobalSignalIntoPrioritizedBuffer(iamReady);
+        emit GlobalSignalExecutionRequested();
     }
 }
 
@@ -118,13 +120,18 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
             switch (currentGlobalSignal.Type.toInt()) {
             case disableAutoSignaller:
             {
+                anIf(SerialPortDataProcessorBasisDbgEn, anWarn("disableAutoSignaller"));
                 emitCurrentPVIDataToLocalDatabase();
                 isAutoSignallerEnabled = false;
                 break;
             }
             case enableAutoSignaller:
             {
-                clearAutoSignallerCache();
+                anIf(SerialPortDataProcessorBasisDbgEn, anAck("disableAutoSignaller"));
+                if (isPressureMeasured || isVoltageMeasured || isCurrentMeasured)
+                {
+                    goToNextGlobalID();
+                }
                 isAutoSignallerEnabled = true;
                 break;
             }
@@ -132,11 +139,25 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
                 break;
             }
         }
-        else if (currentGlobalSignalTypeTypeName == QStringLiteral("SerialPortWorkerBasis::Data"))
+        else if (currentGlobalSignalTypeTypeName == QStringLiteral("SerialPortDataProcessorBasis::Notification"))
         {
+            switch (currentGlobalSignal.Type.toInt()) {
+            case readyToWork:
+            {
+                anIf(SerialPortDataProcessorBasisDbgEn, anAck("readyToWork"));
+                emit Out(GlobalSignal(currentGlobalSignal));
+                break;
+            }
+            default:
+                break;
+            }
+        }
+        else if (currentGlobalSignalTypeTypeName == QStringLiteral("SerialPortWorkerBasis::Data"))
+        {            
             switch (currentGlobalSignal.Type.toInt()) {
             case SerialPortWorkerBasis::replyBytesWithTimeStamp:
             {
+                anIf(SerialPortDataProcessorBasisDbgEn, anAck("SerialPortWorkerBasis::replyBytesWithTimeStamp"));
                 if (isUHV2)
                 {
                     BinaryProtocol reply = BinaryProtocol::fromQByteArray(currentGlobalSignal.Data.toByteArray());
@@ -165,7 +186,7 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
                 else
                 {
                     WindowProtocol reply = WindowProtocol::fromQByteArray(currentGlobalSignal.Data.toByteArray());
-                    if (reply.getAddress() == currentPumpAddress && !reply.getDATA().isEmpty())
+                    if (reply.getWPNo() == currentPumpAddress && !reply.getDATA().isEmpty())
                     {
                         QString replyTopic = reply.getWINMean();
                         if (replyTopic.contains(QStringLiteral("PMeasured"),Qt::CaseInsensitive))
@@ -200,10 +221,11 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
             }
         }
         else if (currentGlobalSignalTypeTypeName == QStringLiteral("SerialPortWorkerBasis::Warning"))
-        {
+        {            
             switch (currentGlobalSignal.Type.toInt()) {
             case SerialPortWorkerBasis::ReadyReadTimedOut:
             {
+                anIf(SerialPortDataProcessorBasisDbgEn, anWarn("SerialPortWorkerBasis::ReadyReadTimedOut"));
                 if (isUHV2)
                 {
                     BinaryProtocol reply = BinaryProtocol::fromQByteArray(currentGlobalSignal.Data.toByteArray());
@@ -232,7 +254,7 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
                 else
                 {
                     WindowProtocol reply = WindowProtocol::fromQByteArray(currentGlobalSignal.Data.toByteArray());
-                    if (reply.getAddress() == currentPumpAddress && reply.getDATA().isEmpty())
+                    if (reply.getWPNo() == currentPumpAddress && reply.getDATA().isEmpty())
                     {
                         QString replyTopic = reply.getWINMean();
                         if (replyTopic.contains(QStringLiteral("PMeasured"),Qt::CaseInsensitive))
@@ -269,11 +291,11 @@ void SerialPortDataProcessorBasis::runningSerialPortDataProcessorOnEntry()
     }
     if (prioritizedBuffer.isEmpty())
     {
-        emit goToState1();
+        emit goIdle();
     }
     else
     {
-        emit goToState2();
+        emit GlobalSignalExecutionRequested();
     }
 }
 
@@ -289,13 +311,17 @@ void SerialPortDataProcessorBasis::errorSerialPortDataProcessorOnEntry()
     errorGlobalSignal.Data = QVariant::fromValue(ErrorInfo);
     errorGlobalSignal.Priority = 200;
     errorGlobalSignal.SignalPriority = 200;
-    errorGlobalSignal.DstStrs.append(SmallCoordinatorObjName);
+    errorGlobalSignal.DstStrs.append(GlobalSignalCoordinatorObjName);
     emit Out(errorGlobalSignal);
 }
 
 void SerialPortDataProcessorBasis::In(const GlobalSignal &aGlobalSignal)
 {
-    addAGlobalSignal(aGlobalSignal);
+    pushAGlobalSignalIntoPrioritizedBuffer(aGlobalSignal);
+    if (currentStateName == QStringLiteral("idleSerialPortDataProcessor"))
+    {
+        emit GlobalSignalExecutionRequested();
+    }
 }
 
 bool SerialPortDataProcessorBasis::openLocalDatabaseConnection()
@@ -367,19 +393,17 @@ bool SerialPortDataProcessorBasis::goToNextGlobalID()
     currentPumpChannel = scopedQuery.value("pumpCH").toInt();
     if (isUHV2)
     {
-        BinaryProtocol pumpProtocol(currentPumpAddress);
-        pumpProtocol.ChannelNo(currentPumpChannel);
-        QBAReadP = pumpProtocol.ReadP().GenMsg();
-        QBAReadV = pumpProtocol.ReadV().GenMsg();
-        QBAReadI = pumpProtocol.ReadI().GenMsg();
+        BinaryProtocol pumpProtocol;
+        QBAReadP = pumpProtocol.SetBPNo(currentPumpAddress).ReadP().ChannelNo(currentPumpChannel).GenMsg();
+        QBAReadV = pumpProtocol.SetBPNo(currentPumpAddress).ReadV().ChannelNo(currentPumpChannel).GenMsg();
+        QBAReadI = pumpProtocol.SetBPNo(currentPumpAddress).ReadI().ChannelNo(currentPumpChannel).GenMsg();
     }
     else
     {
-        WindowProtocol pumpProtocol(currentPumpAddress);
-        pumpProtocol.setChNo(currentPumpChannel);
-        QBAReadP = pumpProtocol.PMeasured().Read().clearDATA().genMSG();
-        QBAReadV = pumpProtocol.VMeasured().Read().clearDATA().genMSG();
-        QBAReadI = pumpProtocol.IMeasured().Read().clearDATA().genMSG();
+        WindowProtocol pumpProtocol;
+        QBAReadP = pumpProtocol.setWPNo(currentPumpAddress).PMeasured().setChNo(currentPumpChannel).Read().clearDATA().genMSG();
+        QBAReadV = pumpProtocol.setWPNo(currentPumpAddress).VMeasured().setChNo(currentPumpChannel).Read().clearDATA().genMSG();
+        QBAReadI = pumpProtocol.setWPNo(currentPumpAddress).IMeasured().setChNo(currentPumpChannel).Read().clearDATA().genMSG();
     }
     anIf(SerialPortDataProcessorBasisDbgEn, anAck("Move To GlobalID = " << currentGlobalID));
     return true;

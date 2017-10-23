@@ -15,13 +15,13 @@ piLocalDBWorkerBasis::~piLocalDBWorkerBasis()
     anIf(piLocalDBWorkerBasisDbgEn, anWarn("piLocalDBWorkerBasis Destroyed"));
 }
 
-void piLocalDBWorkerBasis::initialize()
+void piLocalDBWorkerBasis::initiate()
 {
     dispose();
     if (openLocalDatabaseConnection())
     {
         isInitiated = true;
-        emit goToState1();
+        emit goIdle();
     }
     anIf(piLocalDBWorkerBasisDbgEn && isInitiated, anAck("piLocalDBWorkerBasis Initialized"));
 }
@@ -57,7 +57,7 @@ void piLocalDBWorkerBasis::setOnOffLine(bool on1off0)
         GlobalSignal requestSyncOfflineData;
         requestSyncOfflineData.Type = QVariant::fromValue(syncOfflineData);
         requestSyncOfflineData.Priority = 100;
-        addAGlobalSignal(requestSyncOfflineData);
+        pushAGlobalSignalIntoPrioritizedBuffer(requestSyncOfflineData);
         anIf(piLocalDBWorkerBasisDbgEn, anAck("Offline Data Sync Requested !"))
     }
     isOnline = on1off0;
@@ -422,7 +422,7 @@ void piLocalDBWorkerBasis::emitErrorGlobalSignal()
     errorGlobalSignal.Data = QVariant::fromValue(ErrorInfo);
     errorGlobalSignal.Priority = 200;
     errorGlobalSignal.SignalPriority = 200;
-    errorGlobalSignal.DstStrs.append(SmallCoordinatorObjName);
+    errorGlobalSignal.DstStrs.append(GlobalSignalCoordinatorObjName);
     emit Out(errorGlobalSignal);
 }
 
@@ -432,9 +432,9 @@ void piLocalDBWorkerBasis::queueNotificationReadyToWork()
     iamReady.Type = QVariant::fromValue(readyToWork);
     iamReady.Data = QVariant::fromValue(parent()->objectName());
     iamReady.TimeStamp = NOW2String;
-    iamReady.DstStrs.append(SmallCoordinatorObjName);
+    iamReady.DstStrs.append(GlobalSignalCoordinatorObjName);
     iamReady.SignalPriority = 200;
-    addAGlobalSignal(iamReady);
+    pushAGlobalSignalIntoPrioritizedBuffer(iamReady);
 }
 
 void piLocalDBWorkerBasis::In(const GlobalSignal &aGlobalSignal)
@@ -444,14 +444,14 @@ void piLocalDBWorkerBasis::In(const GlobalSignal &aGlobalSignal)
             && aGlobalSignal.Type.toInt() == ignoreError)
     {
         anIf(piLocalDBWorkerBasisDbgEn, anWarn("ignoreError"));
-        emit goToState2();
+        emit GlobalSignalExecutionRequested();
     }
     else
     {
-        addAGlobalSignal(aGlobalSignal);
+        pushAGlobalSignalIntoPrioritizedBuffer(aGlobalSignal);
         if (currentStateName == QStringLiteral("idlePiLocalDBWorker"))
         {
-            emit goToState2();
+            emit GlobalSignalExecutionRequested();
         }
     }
 }

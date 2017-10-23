@@ -9,7 +9,7 @@ SerialPortWorkerBasis::SerialPortWorkerBasis(QObject *parent) :
     QObject::connect(&SerialPort, &QSerialPort::aboutToClose, this, [&](){
         GlobalSignal notifySerialPortDisconnected;
         notifySerialPortDisconnected.Type = QVariant::fromValue(SerialPortDisconnected);
-        notifySerialPortDisconnected.DstStrs.append(SmallCoordinatorObjName);
+        notifySerialPortDisconnected.DstStrs.append(GlobalSignalCoordinatorObjName);
         emit Out(notifySerialPortDisconnected);
     });
     anIf(SerialPortWorkerBasisDbgEn, anAck("SerialPortWorkerBasis Constructed"));
@@ -21,7 +21,7 @@ SerialPortWorkerBasis::~SerialPortWorkerBasis()
     anIf(SerialPortWorkerBasisDbgEn, anWarn("SerialPortWorkerBasis Destroyed"));
 }
 
-void SerialPortWorkerBasis::initialize(const QString &aPortName)
+void SerialPortWorkerBasis::initiate(const QString &aPortName)
 {
     dispose();
     PortName = aPortName;
@@ -30,9 +30,9 @@ void SerialPortWorkerBasis::initialize(const QString &aPortName)
         isInitiated = true;
         GlobalSignal notifySerialPortConnected;
         notifySerialPortConnected.Type = QVariant::fromValue(SerialPortConnected);
-        notifySerialPortConnected.DstStrs.append(SmallCoordinatorObjName);
-        addAGlobalSignal(notifySerialPortConnected);
-        emit goToState1();
+        notifySerialPortConnected.DstStrs.append(GlobalSignalCoordinatorObjName);
+        pushAGlobalSignalIntoPrioritizedBuffer(notifySerialPortConnected);
+        emit goIdle();
     }
     anIf(SerialPortWorkerBasisDbgEn && isInitiated, anAck("SerialPortWorkerBasis Initialized"));
 }
@@ -73,7 +73,7 @@ void SerialPortWorkerBasis::setPortName(const QString &newPortName)
         anIf(SerialPortWorkerBasisDbgEn, anWarn("Port Name Changed !");anVar(newPortName));
         dispose();
         PortName = newPortName;
-        emit goToState0();
+        emit InitiationRequested();
     }
 }
 
@@ -84,7 +84,7 @@ void SerialPortWorkerBasis::emitRequestPortName()
     signalRequestPortName.Type = QVariant::fromValue(requestPortName);
     signalRequestPortName.Data = QVariant::fromValue(parent()->objectName());
     signalRequestPortName.SignalPriority = 200;
-    signalRequestPortName.DstStrs.append(SmallCoordinatorObjName);
+    signalRequestPortName.DstStrs.append(GlobalSignalCoordinatorObjName);
     emit Out(signalRequestPortName);
 }
 
@@ -94,9 +94,9 @@ void SerialPortWorkerBasis::queueNotificationReadyToWork()
     iamReady.Type = QVariant::fromValue(readyToWork);
     iamReady.Data = QVariant::fromValue(parent()->objectName());
     iamReady.TimeStamp = NOW2String;
-    iamReady.DstStrs.append(SmallCoordinatorObjName);
+    iamReady.DstStrs.append(GlobalSignalCoordinatorObjName);
     iamReady.SignalPriority = 200;
-    addAGlobalSignal(iamReady);
+    pushAGlobalSignalIntoPrioritizedBuffer(iamReady);
 }
 
 void SerialPortWorkerBasis::executePrioritizedBuffer()
@@ -115,7 +115,7 @@ void SerialPortWorkerBasis::executePrioritizedBuffer()
                 anIf(SerialPortWorkerBasisDbgEn, anAck("requestBytesTransmission"));
                 SerialPort.write(currentGlobalSignal.Data.toByteArray());
                 currentGlobalSignal.TimeStamp = NOW2String;
-                currentGlobalSignal.DstStrs.append(SmallCoordinatorObjName);
+                currentGlobalSignal.DstStrs.append(GlobalSignalCoordinatorObjName);
                 currentGlobalSignal.Priority = currentGlobalSignal.Priority + 1;
                 if (SerialPort.waitForBytesWritten(300))
                 {
@@ -197,7 +197,7 @@ void SerialPortWorkerBasis::emitErrorGlobalSignal()
     errorGlobalSignal.Data = QVariant::fromValue(ErrorInfo);
     errorGlobalSignal.Priority = 200;
     errorGlobalSignal.SignalPriority = 200;
-    errorGlobalSignal.DstStrs.append(SmallCoordinatorObjName);
+    errorGlobalSignal.DstStrs.append(GlobalSignalCoordinatorObjName);
     emit Out(errorGlobalSignal);
 }
 
@@ -211,10 +211,10 @@ void SerialPortWorkerBasis::In(const GlobalSignal &aGlobalSignal)
     }
     else
     {
-        addAGlobalSignal(aGlobalSignal);
+        pushAGlobalSignalIntoPrioritizedBuffer(aGlobalSignal);
         if (currentStateName == QStringLiteral("idleSerialPortWorker"))
         {
-            emit goToState2();
+            emit GlobalSignalExecutionRequested();
         }
     }
 }
